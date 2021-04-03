@@ -55,15 +55,17 @@ XPATHS = {
     "display_closed_comp": f"//select[@id='{IDS['display']}']/option[@value='U73530']",
     "display_marketing_to_realtors": f"//select[@id='{IDS['display']}']/option[@value='U71952']",
     "display_for_sale": f"//select[@id='{IDS['display']}']/option[@value='U74267']",
+    "display_ac/p/a_review": f"//select[@id='{IDS['display']}']/option[@value='U84429']",
     "results_table": "//div[@class='css_container']",
-    "sp_tab": r"//th[@data-mlheader='1\bSP$\a2\bSP$']",
+    "sp_tab": r"//th[contains(@data-mlheader, '1\bSP$\a2\b')]",
     "current_price_tab": r"//th[@data-mlheader='1\bCurrent Price\a2\bCurrent Price']",
     "distance_tab": r"//th[@data-mlheader='1\bDistance\a2\bDistance']",
-    "active_checkbox_1": '//input[@type="checkbox" and @class="checkbox" and @value="101"]',
-    "active_checkbox_2": '//input[@type="checkbox" and @class="checkbox" and @value="101"]',
-    "active_checkbox_3": '//input[@type="checkbox" and @class="checkbox" and @value="101"]',
-    "rented_checkbox_3": '//input[@type="checkbox" and @class="checkbox" and @value="21510"]',
-    "expired_checkbox_3": '//input[@type="checkbox" and @class="checkbox" and @value="106"]'
+    "active_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="101"]',
+    "rented_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21510"]',
+    "expired_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="106"]',
+    "pending_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21508"]',
+    "active_with_contract_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21505"]',
+    "filter_container": "//div[@class='css_container']"
 }
 
 
@@ -81,6 +83,18 @@ def screenshot_and_crop(folder, location, size, address):
     im = im.crop((int(x), int(y), int(width), int(height)))
     im.save(file_path)
     return file_path
+
+
+def criteria_screenshot(address, folder):
+    # Screenshot
+    filter_container = WebDriverWait(driver, 15)\
+        .until(EC.element_to_be_clickable((By.XPATH, XPATHS['filter_container'])))
+    location = filter_container.location_once_scrolled_into_view
+    size = filter_container.size
+
+    filter_path = screenshot_and_crop('criteria/' + folder, location, size, address)
+    driver.execute_script("window.scrollTo(0, 0)")
+    return filter_path
 
 
 def verify_folder_exists(folder):
@@ -130,13 +144,17 @@ def select_matrix_app():
         pass
 
 
+def escape():
+    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+
+
 # Searchs
 # Select type of search
 def select_search(search: int):
     # Click on search
     search_option = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['search_option'])))
     search_option.click()
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
 
     # Select search type
     WebDriverWait(driver, 15).until(
@@ -149,9 +167,9 @@ def single_family_search(address, baths, rooms, sqft_to):
     # Search
     select_search(search=0)
 
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to)
+    single_family_filter(address, baths, rooms, sqft_to, folder="single_family")
     # Results
     return results_family_search(address)
 
@@ -159,9 +177,9 @@ def single_family_search(address, baths, rooms, sqft_to):
 def res_income_search(address, baths, rooms, sqft_to):
     # Search
     select_search(search=1)
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=2)
+    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=2, folder="res_income")
 
     return results_res_income(address)
 
@@ -169,28 +187,54 @@ def res_income_search(address, baths, rooms, sqft_to):
 def res_rental_search(address, baths, rooms, sqft_to):
     # Search
     select_search(search=3)
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=3)
+    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=3, folder="res_rental")
     results_res_rental(address)
-    results_res_rental(address, display="marketing")
+    results_res_rental(address, display_mode="marketing")
+
+
+def single_family_search_2(address, baths, rooms, sqft_to):
+    # Search
+    select_search(search=0)
+
+    escape()
+    # Filter
+    single_family_filter(address, baths, rooms, sqft_to, search_type=4, folder="single_family_2")
+    # Results
+    return results_family_search(address, index=2, display_mode='display_ac/p/a_review')
+
+
+def res_income_search_2(address, baths, rooms, sqft_to):
+    # Search
+    select_search(search=1)
+    escape()
+    # Filter
+    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=5, folder="res_income_2")
+
+    return results_res_income(address, index=2, display_mode='display_ac/p/a_review')
 
 
 # Filters
-def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=1):
+def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=1, folder="single_family"):
     # RE1/RE2 Single Family/Condo Filter
 
     # Change within options
-    XPATHS["select_within_option_0.5"] = f'//select[@id="{IDS[f"select_within_{search_type}"]}"]' \
+    XPATHS["select_within_option_0.5"] = f'//select[@id="{IDS[f"select_within_{search_type - 3 if search_type > 3 else search_type}"]}"]' \
                                          f'/option[@value="0.80467200"]'
     XPATHS[
-        "select_within_option_1"] = f'//select[@id="{IDS[f"select_within_{search_type}"]}"]/option[@value="1.60934400"]'
+        "select_within_option_1"] = f'//select[@id="{IDS[f"select_within_{search_type - 3 if search_type > 3 else search_type}"]}"]/option[@value="1.60934400"]'
 
+    escape()
     # Within open
     select_within = WebDriverWait(driver, 15).until(
-        EC.element_to_be_clickable((By.ID, IDS[f'select_within_{search_type}'])))
+        EC.element_to_be_clickable(
+            (By.ID, IDS[f'select_within_{search_type - 3 if search_type > 3 else search_type}'])
+        )
+    )
     select_within.click()
 
+    escape()
     # Select option
     select_within_option = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable((By.XPATH, XPATHS[f"select_within_option_{miles}"])))
@@ -200,45 +244,76 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
 
     # Address input
     address_input = WebDriverWait(driver, 15).until(
-        EC.element_to_be_clickable((By.ID, IDS[f'address_input_{search_type}'])))
+        EC.element_to_be_clickable(
+            (By.ID, IDS[f'address_input_{search_type - 3 if search_type > 3 else search_type}'])
+        )
+    )
     address_input.click()
     address_input.send_keys(address)
     # Select option
     dialog_address_search = WebDriverWait(driver, 15).until(
-        EC.element_to_be_clickable((By.XPATH, XPATHS['dialog_address_search'])))
+        EC.element_to_be_clickable(
+            (By.XPATH, XPATHS['dialog_address_search'])
+        )
+    )
     dialog_address_search.click()
 
-    if search_type != 2:
+    if search_type not in [2, 5]:
         # Bedrooms
         bedrooms_input = WebDriverWait(driver, 15).until(
-            EC.element_to_be_clickable((By.ID, IDS[f'bedrooms_input_{search_type}'])))
+            EC.element_to_be_clickable(
+                (By.ID, IDS[f'bedrooms_input_{search_type - 3 if search_type > 3 else search_type}'])
+            )
+        )
         if rooms:
             bedrooms_input.send_keys(f"{rooms - 1}-{rooms + 1}")
 
         # Baths
         baths_input = WebDriverWait(driver, 15).until(
-            EC.element_to_be_clickable((By.ID, IDS[f'baths_input_{search_type}'])))
+            EC.element_to_be_clickable(
+                (By.ID, IDS[f'baths_input_{search_type - 3 if search_type > 3 else search_type}'])
+            )
+        )
         if baths:
             baths_input.send_keys(f"{baths - 1}-{baths + 1}")
 
     # SQFT
     sqft_living_area_input = WebDriverWait(driver, 15).until(
-        EC.element_to_be_clickable((By.ID, IDS[f'sqft_living_area_input_{search_type}'])))
+        EC.element_to_be_clickable(
+            (By.ID, IDS[f'sqft_living_area_input_{search_type - 3 if search_type > 3 else search_type}'])
+        )
+    )
     if sqft_to:
         sqft_living_area_input.send_keys(f"0-{sqft_to + 700}")
 
+    # Res rental
     if search_type == 3:
-        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_checkbox_3']))).click()
-        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['rented_checkbox_3']))).click()
-        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['expired_checkbox_3']))).click()
+        # Active
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_checkbox']))).click()
+        # Rented
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['rented_checkbox']))).click()
+        # Expired
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['expired_checkbox']))).click()
 
         rented_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['rented_input_3'])))
         rented_input.clear()
         rented_input.send_keys(f"0-365")
+    elif search_type == 4 or search_type == 5:
+        # Active
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_checkbox']))).click()
+        # Pending
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['pending_checkbox']))).click()
+        # Active with contract
+        WebDriverWait(driver, 15)\
+            .until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_with_contract_checkbox']))).click()
+
+    criteria_path = criteria_screenshot(address, folder=folder)
 
     # Go to Results
     results_tab = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['results_tab'])))
     results_tab.click()
+
+    return criteria_path
 
 
 # Results actions
@@ -260,13 +335,13 @@ def order_by_distance():
 
 
 # Table actions
-def set_display(mode='display_closed_comp'):
+def set_display(display_mode='display_closed_comp'):
     # Open dropdown
     display = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['display'])))
     display.click()
     # Select option
     display_option = WebDriverWait(driver, 15) \
-        .until(EC.element_to_be_clickable((By.XPATH, XPATHS[mode])))
+        .until(EC.element_to_be_clickable((By.XPATH, XPATHS[display_mode])))
     display_option.click()
     # Click again to close dropdown
     sleep(1)
@@ -274,57 +349,66 @@ def set_display(mode='display_closed_comp'):
 
 
 # Results
-def results_family_search(address):
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-    set_display()
-    sleep(1)
+def results_family_search(address, index=None, display_mode='display_closed_comp'):
+    escape()
 
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-    order_by_sp()
-    order_by_sp()
+    set_display(display_mode)
     sleep(1)
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
+    order_by_sp()
+    order_by_sp()
+
+    sleep(1)
+    escape()
 
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
     location = results_table.location_once_scrolled_into_view
     size = results_table.size
-    results_path = screenshot_and_crop('results/single_family', location, size, address)
-    driver.execute_script("window.scrollTo(0, 0)")
-    return results_path
-
-
-def results_res_income(address):
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-    set_display()
-    sleep(1)
-
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-    order_by_sp()
-    order_by_sp()
-    sleep(1)
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-
-    # Screenshot
-    results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
-    location = results_table.location_once_scrolled_into_view
-    size = results_table.size
-    results_path = screenshot_and_crop('results/res_income', location, size, address)
-    driver.execute_script("window.scrollTo(0, 0)")
-    return results_path
-
-
-def results_res_rental(address, display="for_sale"):
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
-    if display == "for_sale":
-        set_display(mode="display_for_sale")
+    if not index:
+        results_path = screenshot_and_crop('results/single_family', location, size, address)
     else:
-        set_display(mode="display_marketing_to_realtors")
+        results_path = screenshot_and_crop(f'results/single_family_{index}', location, size, address)
+
+    driver.execute_script("window.scrollTo(0, 0)")
+    return results_path
+
+
+def results_res_income(address, index=None, display_mode='display_closed_comp'):
+    escape()
+
+    set_display(display_mode)
     sleep(1)
 
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
+    order_by_sp()
+    order_by_sp()
+    sleep(1)
+    escape()
+
+    # Screenshot
+    results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
+    location = results_table.location_once_scrolled_into_view
+    size = results_table.size
+    if not index:
+        results_path = screenshot_and_crop('results/res_income', location, size, address)
+    else:
+        results_path = screenshot_and_crop(f'results/res_income_{index}', location, size, address)
+    driver.execute_script("window.scrollTo(0, 0)")
+    return results_path
+
+
+def results_res_rental(address, display_mode="for_sale"):
+    escape()
+    if display_mode == "for_sale":
+        set_display(display_mode="display_for_sale")
+    else:
+        set_display(display_mode="display_marketing_to_realtors")
+    sleep(1)
+
+    escape()
     try:
-        if display == "for_sale":
+        if display_mode == "for_sale":
             order_by_distance()
         else:
             order_by_current_price()
@@ -332,13 +416,13 @@ def results_res_rental(address, display="for_sale"):
         print(e)
         print("No results")
     sleep(1)
-    webdriver.ActionChains(driver).send_keys(Keys.ESCAPE).perform()
+    escape()
 
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
     location = results_table.location_once_scrolled_into_view
     size = results_table.size
-    results_path = screenshot_and_crop('results/res_rental_' + display, location, size, address)
+    results_path = screenshot_and_crop('results/res_rental_' + display_mode, location, size, address)
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
 
@@ -354,10 +438,17 @@ def start(address, baths, rooms, sqft_to):
     res_income_search(address, baths, rooms, sqft_to)
     sleep(5)
     res_rental_search(address, baths, rooms, sqft_to)
+    sleep(5)
+    single_family_search_2(address, baths, rooms, sqft_to)
+    sleep(5)
+    res_income_search_2(address, baths, rooms, sqft_to)
 
 
 if __name__ == "__main__":
+    # Create if not exists this folders
     verify_folder_exists('results')
     verify_folder_exists('criteria')
 
+    # Extract
     start("416 SW 24th", 2, 2, 500)
+    # Transform and Load
