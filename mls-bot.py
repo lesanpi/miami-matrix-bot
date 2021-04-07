@@ -8,15 +8,21 @@ from webdriver_manager.chrome import ChromeDriverManager
 from PIL import Image
 from time import sleep
 import os
+import pprint
+
+printer = pprint.PrettyPrinter(indent=1)
 
 URL = "https://sef.clareityiam.net/idp/login"
+COUNTY_URL = "https://www.miamidade.gov/Apps/PA/propertysearch/#/"
+GOOGLE_URL = "https://www.google.com"
 
 options = webdriver.ChromeOptions()
 options.add_argument('--ignore-certificate-errors')
 options.add_argument('--ignore-ssl-errors')
+#options.add_argument('--headless')
+options.add_argument('--log-level=3')
 driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
 driver.maximize_window()
-driver.get(URL)
 
 IDS = {
     "address_input_1": "Fm11_Ctrl7_TB",
@@ -69,9 +75,9 @@ XPATHS = {
 }
 
 
-def screenshot_and_crop(folder, location, size, address):
+def screenshot_and_crop(folder, location, size, filename):
     verify_folder_exists(folder)
-    file_path = f"{folder}/{address.lower().replace(' ', '-').replace(',', '')}.png"
+    file_path = f"{folder}/{filename.lower().replace(' ', '-').replace(',', '')}.png"
     driver.save_screenshot(file_path)
 
     # crop image
@@ -87,14 +93,19 @@ def screenshot_and_crop(folder, location, size, address):
 
 def criteria_screenshot(address, folder):
     # Screenshot
-    filter_container = WebDriverWait(driver, 15)\
+    filter_container = WebDriverWait(driver, 15) \
         .until(EC.element_to_be_clickable((By.XPATH, XPATHS['filter_container'])))
-    location = filter_container.location_once_scrolled_into_view
-    size = filter_container.size
 
-    filter_path = screenshot_and_crop('criteria/' + folder, location, size, address)
+    filter_path = screenshot_of_element(filter_container, 'criteria/' + folder, address)
     driver.execute_script("window.scrollTo(0, 0)")
     return filter_path
+
+
+def screenshot_of_element(element, folder, filename):
+    location = element.location_once_scrolled_into_view
+    size = element.size
+    file_path = screenshot_and_crop(folder, location, size, filename)
+    return file_path
 
 
 def verify_folder_exists(folder):
@@ -105,6 +116,7 @@ def verify_folder_exists(folder):
 # Login
 def login():
     # Login
+    driver.get(URL)
     username_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['username_input'])))
 
     # Username
@@ -125,10 +137,10 @@ def login():
 def select_matrix_app():
     # Quit dialog
     try:
-        WebDriverWait(driver, 5).until(
+        WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.XPATH, XPATHS['end_tour_button']))).click()
     except Exception as e:
-        print(e)
+        print("Quit tour error \n")
     # Select matrix app
     WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['matrix_app']))).click()
 
@@ -140,7 +152,7 @@ def select_matrix_app():
     try:
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['read_later']))).click()
     except Exception as e:
-        print(e)
+        print("Modal Error \n")
         pass
 
 
@@ -169,9 +181,14 @@ def single_family_search(address, baths, rooms, sqft_to):
 
     escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, folder="single_family")
+    criteria_path = single_family_filter(address, baths, rooms, sqft_to, folder="single_family")
     # Results
-    return results_family_search(address)
+    results_path = results_family_search(address)
+
+    return {
+        "criteria": criteria_path,
+        "results": results_path
+    }
 
 
 def res_income_search(address, baths, rooms, sqft_to):
@@ -179,9 +196,14 @@ def res_income_search(address, baths, rooms, sqft_to):
     select_search(search=1)
     escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=2, folder="res_income")
+    criteria_path = single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=2, folder="res_income")
 
-    return results_res_income(address)
+    results_path = results_res_income(address)
+
+    return {
+        "criteria": criteria_path,
+        "results": results_path
+    }
 
 
 def res_rental_search(address, baths, rooms, sqft_to):
@@ -189,9 +211,14 @@ def res_rental_search(address, baths, rooms, sqft_to):
     select_search(search=3)
     escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=3, folder="res_rental")
-    results_res_rental(address)
-    results_res_rental(address, display_mode="marketing")
+    criteria_path = single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=3, folder="res_rental")
+    results_path_1 = results_res_rental(address)
+    results_path_2 = results_res_rental(address, display_mode="marketing")
+
+    return {
+        "criteria": criteria_path,
+        "results": [results_path_1, results_path_2]
+    }
 
 
 def single_family_search_2(address, baths, rooms, sqft_to):
@@ -200,9 +227,14 @@ def single_family_search_2(address, baths, rooms, sqft_to):
 
     escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, search_type=4, folder="single_family_2")
+    criteria_path = single_family_filter(address, baths, rooms, sqft_to, search_type=4, folder="single_family_2")
     # Results
-    return results_family_search(address, index=2, display_mode='display_ac/p/a_review')
+    results_path = results_family_search(address, index=2, display_mode='display_ac/p/a_review')
+
+    return {
+        "criteria": criteria_path,
+        "results": results_path
+    }
 
 
 def res_income_search_2(address, baths, rooms, sqft_to):
@@ -210,9 +242,13 @@ def res_income_search_2(address, baths, rooms, sqft_to):
     select_search(search=1)
     escape()
     # Filter
-    single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=5, folder="res_income_2")
+    criteria_path = single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=5, folder="res_income_2")
+    results_path = results_res_income(address, index=2, display_mode='display_ac/p/a_review')
 
-    return results_res_income(address, index=2, display_mode='display_ac/p/a_review')
+    return {
+        "criteria": criteria_path,
+        "results": results_path
+    }
 
 
 # Filters
@@ -220,8 +256,9 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
     # RE1/RE2 Single Family/Condo Filter
 
     # Change within options
-    XPATHS["select_within_option_0.5"] = f'//select[@id="{IDS[f"select_within_{search_type - 3 if search_type > 3 else search_type}"]}"]' \
-                                         f'/option[@value="0.80467200"]'
+    XPATHS[
+        "select_within_option_0.5"] = f'//select[@id="{IDS[f"select_within_{search_type - 3 if search_type > 3 else search_type}"]}"]' \
+                                      f'/option[@value="0.80467200"]'
     XPATHS[
         "select_within_option_1"] = f'//select[@id="{IDS[f"select_within_{search_type - 3 if search_type > 3 else search_type}"]}"]/option[@value="1.60934400"]'
 
@@ -248,14 +285,17 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
             (By.ID, IDS[f'address_input_{search_type - 3 if search_type > 3 else search_type}'])
         )
     )
+    escape()
     address_input.click()
     address_input.send_keys(address)
+
     # Select option
     dialog_address_search = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable(
             (By.XPATH, XPATHS['dialog_address_search'])
         )
     )
+    escape()
     dialog_address_search.click()
 
     if search_type not in [2, 5]:
@@ -288,11 +328,11 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
 
     # Res rental
     if search_type == 3:
-        # Active
+        # Active uncheck
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_checkbox']))).click()
-        # Rented
+        # Rented check
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['rented_checkbox']))).click()
-        # Expired
+        # Expired check
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['expired_checkbox']))).click()
 
         rented_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['rented_input_3'])))
@@ -304,7 +344,7 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
         # Pending
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['pending_checkbox']))).click()
         # Active with contract
-        WebDriverWait(driver, 15)\
+        WebDriverWait(driver, 15) \
             .until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_with_contract_checkbox']))).click()
 
     criteria_path = criteria_screenshot(address, folder=folder)
@@ -363,12 +403,11 @@ def results_family_search(address, index=None, display_mode='display_closed_comp
 
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
-    location = results_table.location_once_scrolled_into_view
-    size = results_table.size
+
     if not index:
-        results_path = screenshot_and_crop('results/single_family', location, size, address)
+        results_path = screenshot_of_element(results_table, 'results/single_family', address)
     else:
-        results_path = screenshot_and_crop(f'results/single_family_{index}', location, size, address)
+        results_path = screenshot_of_element(results_table, f'results/single_family_{index}', address)
 
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
@@ -388,12 +427,12 @@ def results_res_income(address, index=None, display_mode='display_closed_comp'):
 
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
-    location = results_table.location_once_scrolled_into_view
-    size = results_table.size
+
     if not index:
-        results_path = screenshot_and_crop('results/res_income', location, size, address)
+        results_path = screenshot_of_element(results_table, 'results/res_income', address)
     else:
-        results_path = screenshot_and_crop(f'results/res_income_{index}', location, size, address)
+        results_path = screenshot_of_element(results_table, f'results/res_income_{index}', address)
+
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
 
@@ -413,42 +452,144 @@ def results_res_rental(address, display_mode="for_sale"):
         else:
             order_by_current_price()
     except Exception as e:
-        print(e)
-        print("No results")
+        print("Order error \n")
     sleep(1)
     escape()
 
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
-    location = results_table.location_once_scrolled_into_view
-    size = results_table.size
-    results_path = screenshot_and_crop('results/res_rental_' + display_mode, location, size, address)
+    results_path = screenshot_of_element(results_table, 'results/res_rental_' + display_mode, address)
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
 
 
-def start(address, baths, rooms, sqft_to):
+def top_ten_links_on_google(address):
+    driver.get(GOOGLE_URL)
+    search_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//input[@type='text']")))
+    search_input.send_keys(address)
+    webdriver.ActionChains(driver).send_keys(Keys.ENTER).perform()
+
+    links = driver.find_elements_by_xpath("//div[@class='yuRUbf']/a")[:10]
+    links = [link.get_attribute("href") for link in links]
+    return links
+
+
+def extract_county_info(address):
+    search_address_on_county(address)
+    select_folio_number()
+    return screenshots_of_county_info(address)
+
+
+def search_address_on_county(address):
+    driver.get(COUNTY_URL)
+
+    search_input_id = "search_box"
+    search_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, search_input_id)))
+    search_input.clear()
+    search_input.send_keys(address)
+
+    search_submit_id = "search_submit"
+    search_submit = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, search_submit_id)))
+    search_submit.click()
+
+
+def select_folio_number(index=1):
+    pass
+
+
+def screenshots_of_county_info(address):
+    subfolder = address.lower().replace(' ', '-').replace(',', '')
+
+    driver.execute_script("document.body.style.zoom='80%'")
+    property_info_id = "property_info"
+    property_info = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, property_info_id)))
+    location = property_info.location_once_scrolled_into_view
+    size = property_info.size
+    size['height'] = size['height'] * 0.8
+    size['width'] = size['width'] * 0.8
+    location['x'] = location['x'] * 0.8
+
+    property_info_path = screenshot_and_crop('county/' + subfolder, location, size, "property_info")
+
+    driver.execute_script("document.body.style.zoom='100%'")
+
+    full_legal_description_xpath = "//div[@class='col-md-6' and position() = 2]/div[2]"
+    full_legal_description = WebDriverWait(driver, 15).until(
+        EC.element_to_be_clickable((By.XPATH, full_legal_description_xpath))
+    )
+    legal_info_path = screenshot_of_element(full_legal_description, 'county/' + subfolder, "full_legal_info")
+
+    taxable_xpath = "//div[@class='col-md-6' and position() = 1]/div[2]"
+    taxable = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, taxable_xpath)))
+    taxable_info_path = screenshot_of_element(taxable, 'county/' + subfolder, "taxable")
+
+    sales_info_xpath = "//div[@class='row tabular_data' and not(@ng-show)]/div[@class='col-md-12']"
+    sales_info = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, sales_info_xpath)))
+    sales_info_path = screenshot_of_element(sales_info, 'county/' + subfolder, "sales_info")
+
+    return {
+        "property_info": property_info_path,
+        "legal_info": legal_info_path,
+        "taxable_info": taxable_info_path,
+        "sales_info": sales_info_path
+    }
+
+
+def mls_extraction(address, baths, rooms, sqft_to):
     login()
-    sleep(3)
+    sleep(1)
 
     select_matrix_app()
 
-    single_family_search(address, baths, rooms, sqft_to)
-    sleep(5)
-    res_income_search(address, baths, rooms, sqft_to)
-    sleep(5)
-    res_rental_search(address, baths, rooms, sqft_to)
-    sleep(5)
-    single_family_search_2(address, baths, rooms, sqft_to)
-    sleep(5)
-    res_income_search_2(address, baths, rooms, sqft_to)
+    single_family_1 = single_family_search(address, baths, rooms, sqft_to)
+    printer.pprint(single_family_1)
+    sleep(1)
+
+    res_income_1 = res_income_search(address, baths, rooms, sqft_to)
+    printer.pprint(res_income_1)
+    sleep(1)
+
+    res_rental = res_rental_search(address, baths, rooms, sqft_to)
+    printer.pprint(res_rental)
+    sleep(1)
+
+    single_family_2 = single_family_search_2(address, baths, rooms, sqft_to)
+    printer.pprint(single_family_2)
+    sleep(1)
+
+    res_income_2 = res_income_search_2(address, baths, rooms, sqft_to)
+    printer.pprint(res_income_2)
+    sleep(1)
+
+    data = {
+        "single_family_1": single_family_1,
+        "res_income_1": res_income_1,
+        "res_rental": res_rental,
+        "single_family_2": single_family_2,
+        "res_income_2": res_income_2
+    }
+
+    return data
+
+def extract(address, baths, rooms, sqft_to):
+    # Google the address, obtain the top 10 links
+    top_google_links = top_ten_links_on_google(address)
+    printer.pprint(top_google_links)
+
+    # MLS Extraction
+    criterias_results_paths = mls_extraction(address, baths, rooms, sqft_to)
+    printer.pprint(criterias_results_paths)
+
+    # Extract the county info: property info, sales info, taxable info, legal info with screenshots
+    county_info_paths = extract_county_info(address)
 
 
 if __name__ == "__main__":
     # Create if not exists this folders
     verify_folder_exists('results')
     verify_folder_exists('criteria')
+    verify_folder_exists('county')
 
     # Extract
-    start("416 SW 24th", 2, 2, 500)
+    extract("416 SW 24th", 2, 2, 500)
     # Transform and Load
