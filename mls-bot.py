@@ -9,6 +9,8 @@ from PIL import Image
 from time import sleep
 import os
 import pprint
+from pptx import Presentation
+from pptx.util import Inches, Pt
 
 printer = pprint.PrettyPrinter(indent=1)
 
@@ -96,14 +98,16 @@ def criteria_screenshot(address, folder):
     filter_container = WebDriverWait(driver, 15) \
         .until(EC.element_to_be_clickable((By.XPATH, XPATHS['filter_container'])))
 
-    filter_path = screenshot_of_element(filter_container, 'criteria/' + folder, address)
+    filter_path = screenshot_of_element(filter_container, 'criteria/' + folder, address, width=1000)
     driver.execute_script("window.scrollTo(0, 0)")
     return filter_path
 
 
-def screenshot_of_element(element, folder, filename):
+def screenshot_of_element(element, folder, filename, width = None):
     location = element.location_once_scrolled_into_view
     size = element.size
+    if width:
+        size['width'] = width
     file_path = screenshot_and_crop(folder, location, size, filename)
     return file_path
 
@@ -568,7 +572,8 @@ def mls_extraction(address, baths, rooms, sqft_to):
         "single_family_2": single_family_2,
         "res_income_2": res_income_2
     }
-
+    print("Data:")
+    printer.pprint(data)
     return data
 
 def extract(address, baths, rooms, sqft_to):
@@ -583,13 +588,148 @@ def extract(address, baths, rooms, sqft_to):
     # Extract the county info: property info, sales info, taxable info, legal info with screenshots
     county_info_paths = extract_county_info(address)
 
+    return top_google_links, criterias_results_paths, county_info_paths
+
+def transform(address, mls_data, county_data):
+    titles = [
+        address.upper(),
+        "PRIMEROS 10 ENLACES DE GOOGLE",
+        "CRITERIO PARA COMPS FOR SALE SINGLE FAMILY",
+        "COMPS FOR SALE SINGLE FAMILY",
+        "CRITERIO PARA COMPS FOR SALE MULTI FAMILY",
+        "COMPS FOR SALE MULTI FAMILY",
+        "CRITERIO PARA COMPS FOR RENT",
+        "COMPS FOR RENT (by Distance and Display For Sale)",
+        "COMPS FOR RENT (by Higher Priced and Display MarketingToRealtor)",
+        "COUNTY INFO: PROPERTY INFO",
+        "COUNTY INFO: TAXABLE",
+        "COUNTY INFO: SALES INFO",
+        "COUNTY INFO: FULL LEGAL DESCRIPTION",
+        "CRITERIO PARA COMPS FOR SALE SINGLE FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
+        "COMPS FOR SALE SINGLE FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
+        "CRITERIO PARA COMPS FOR SALE MULTI FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
+        "COMPS FOR SALE MULTI FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
+    ]
+    slides_data = []
+    slide_index = 2
+
+    slides_data.append({'image_path': None, 'slide_index': 0, 'title': str(address).upper()})
+    slides_data.append({'image_path': None, 'slide_index': 1, 'title': 'PRIMEROS 10 ENLACES DE GOOGLE'}, )
+    county_keys = list(county_data.keys())
+    mls_keys = list(mls_data.keys())
+
+    similar_keys = mls_keys[-2:]
+    mls_keys = mls_keys[:3]
+
+    slide_index = 2
+    for i in range(2, 16):
+        if slide_index > 16:
+            break
+
+        if slide_index in [9, 10, 11, 12]:
+            for county_key in county_keys:
+                slide = {
+                    "title": titles[slide_index],
+                    "image_path": county_data[county_key],
+                    "slide_index": slide_index
+                }
+                slides_data.append(slide)
+                slide_index += 1
+        else:
+            keys_for_mls = similar_keys if slide_index > 9 else mls_keys
+
+            for mls_key in keys_for_mls:
+                for image_key in ['criteria', 'results']:
+                    if mls_key == 'res_rental' and image_key == 'results':
+                        for results_images in mls_data[mls_key][image_key]:
+                            slide = {
+                                "title": titles[slide_index],
+                                "image_path": results_images,
+                                "slide_index": slide_index
+                            }
+                            slides_data.append(slide)
+                            slide_index += 1
+                    else:
+                        slide = {
+                            "title": titles[slide_index],
+                            "image_path": mls_data[mls_key][image_key],
+                            "slide_index": slide_index
+                        }
+                        slides_data.append(slide)
+                        slide_index += 1
+
+                if slide_index == 9:
+                    break
+
+    printer.pprint(slides_data)
+
+    return slides_data
+
+def load(address, google_links, slides_data):
+    address_format = address.lower().replace(' ', '-').replace(',', '')
+
+    prs = Presentation()
+    i = 0
+    for slide_data in slides_data:
+
+        # Set layout
+        if slide_data["slide_index"] == 0:
+            layout = prs.slide_layouts[0]
+        elif slide_data["slide_index"] == 1:
+            layout = prs.slide_layouts[1]
+        else:
+            layout = prs.slide_layouts[5]
+        slide = prs.slides.add_slide(layout)
+
+        # Title for each slide
+        title = slide.shapes.title
+        title.text = slide_data['title']
+
+        # Slide #1
+        if slide_data["slide_index"] == 0:
+            subtitle = slide.placeholders[1]
+            subtitle.text = "MLS Matrix Bot"
+        # Google Links Slide
+        elif slide_data["slide_index"] == 1:
+            body_shape = slide.shapes.placeholders[1]
+
+            tf = body_shape.text_frame
+            tf.text = 'Top 10:'
+            # Google Links
+            for link in google_links:
+                p = tf.add_paragraph()
+                p.text = link
+                p.size = Pt(6)
+                p.level = 1
+                p.font.size = Pt(15)
+
+        # Insert image if have a image path
+        if slide_data["image_path"]:
+            left = Inches(0.1)
+            top = Inches(2) if len(slide_data['title']) > 40 else Inches(1.8)
+            # height = Inches(20)
+            width = Inches(9.9)
+            image_path = slide_data["image_path"]
+            if os.path.isfile(image_path):
+                pic = slide.shapes.add_picture(image_path, left, top, width=width)
+
+        i += 1
+
+    # Save
+    prs.save(f'{address_format}.pptx')
+
 
 if __name__ == "__main__":
+
+    address = "416 SW 24th"
+
     # Create if not exists this folders
     verify_folder_exists('results')
     verify_folder_exists('criteria')
     verify_folder_exists('county')
-
     # Extract
-    extract("416 SW 24th", 2, 2, 500)
-    # Transform and Load
+    google_links, mls_data, county_data = extract(address, 2, 2, 500)
+    # Transform
+    slides_data = transform(address=address, mls_data=mls_data, county_data=county_data)
+    # Load
+    load(address=address, google_links=google_links, slides_data=slides_data)
