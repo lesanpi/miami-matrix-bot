@@ -1,6 +1,7 @@
 venv/
 .vscode/
 results/
+county/
 .idea
 criteria/
 *.pptx

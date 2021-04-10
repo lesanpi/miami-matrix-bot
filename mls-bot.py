@@ -73,7 +73,8 @@ XPATHS = {
     "expired_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="106"]',
     "pending_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21508"]',
     "active_with_contract_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21505"]',
-    "filter_container": "//div[@class='css_container']"
+    "filter_container": "//div[@class='css_container']",
+    "folio_number_link": "//div[@class='results_record ng-scope']/div/span"
 }
 
 
@@ -498,13 +499,17 @@ def search_address_on_county(address):
 
 
 def select_folio_number(index=1):
-    pass
+    WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['folio_number_link'])))
+    folios_number = driver.find_elements_by_xpath(XPATHS['folio_number_link'])
+    folio_number_link = folios_number[0]
 
+    folio_number_link.click()
 
 def screenshots_of_county_info(address):
     subfolder = address.lower().replace(' ', '-').replace(',', '')
 
     driver.execute_script("document.body.style.zoom='80%'")
+    sleep(1)
     property_info_id = "property_info"
     property_info = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, property_info_id)))
     location = property_info.location_once_scrolled_into_view
@@ -512,6 +517,7 @@ def screenshots_of_county_info(address):
     size['height'] = size['height'] * 0.8
     size['width'] = size['width'] * 0.8
     location['x'] = location['x'] * 0.8
+    location['y'] = location['y'] * 10
 
     property_info_path = screenshot_and_crop('county/' + subfolder, location, size, "property_info")
 
@@ -602,9 +608,9 @@ def transform(address, mls_data, county_data):
         "COMPS FOR RENT (by Distance and Display For Sale)",
         "COMPS FOR RENT (by Higher Priced and Display MarketingToRealtor)",
         "COUNTY INFO: PROPERTY INFO",
+        "COUNTY INFO: FULL LEGAL DESCRIPTION",
         "COUNTY INFO: TAXABLE",
         "COUNTY INFO: SALES INFO",
-        "COUNTY INFO: FULL LEGAL DESCRIPTION",
         "CRITERIO PARA COMPS FOR SALE SINGLE FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
         "COMPS FOR SALE SINGLE FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
         "CRITERIO PARA COMPS FOR SALE MULTI FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
@@ -707,11 +713,22 @@ def load(address, google_links, slides_data):
         if slide_data["image_path"]:
             left = Inches(0.1)
             top = Inches(2) if len(slide_data['title']) > 40 else Inches(1.8)
-            # height = Inches(20)
-            width = Inches(9.9)
+
+            if slide_data["slide_index"] in [9, 10, 11]:
+                height = Inches(5.5)
+                width = None
+                if slide_data['slide_index'] == 9:
+                    top = Inches(1.5)
+                    left = Inches(3)
+                    width = Inches(3)
+                    height = None
+            else:
+                width = Inches(9.9)
+                height = None
             image_path = slide_data["image_path"]
+
             if os.path.isfile(image_path):
-                pic = slide.shapes.add_picture(image_path, left, top, width=width)
+                pic = slide.shapes.add_picture(image_path, left, top, width=width, height=height)
 
         i += 1
 
