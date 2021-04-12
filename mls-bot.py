@@ -1,3 +1,4 @@
+from __future__ import print_function, unicode_literals
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -11,6 +12,72 @@ import os
 import pprint
 from pptx import Presentation
 from pptx.util import Inches, Pt
+from pyfiglet import Figlet
+from PyInquirer import prompt, print_json, style_from_dict, Token, Separator
+from clint.textui import colored, puts
+from os import system, name
+import glob
+
+# Limpiar la pantalla
+def clear():
+    # Windows
+    if name == 'nt':
+        _ = system('cls')
+    # Mac and Linux
+    else:
+        _ = system('clear')
+
+# Styles
+style = style_from_dict({
+    Token.Separator: '#cc5454',
+    Token.QuestionMark: '#673ab7 bold',
+    Token.Selected: '#cc5454',  # default
+    Token.Pointer: '#673ab7 bold',
+    Token.Instruction: '',  # default
+    Token.Answer: '#f44336 bold',
+    Token.Question: 'bold #673ab7',
+})
+
+# Titulo
+title = Figlet(font='slant')
+# Actions
+main_menu_actions = [
+    "Use a especific address",
+    "Use a excel file",
+]
+excel_files = glob.glob('*.xlsx')
+# Menu
+main_menu = [
+    {
+        "type": "list",
+        "message": "Menu",
+        "name": "action",
+        "choices": main_menu_actions + [Separator(), "Cerrar"]
+    }
+]
+# Address
+address_info_input = [
+    {
+        "type": "input",
+        "message": "Address",
+        "name": "address"
+    },
+    {
+        "type": "input",
+        "message": "Baths (Press Enter if None)",
+        "name": "baths"
+    },
+    {
+        "type": "input",
+        "message": "Rooms (Press Enter if None)",
+        "name": "rooms"
+    },
+    {
+        "type": "input",
+        "message": "Sqft To (Press Enter if None)",
+        "name": "sqft_to"
+    },
+]
 
 printer = pprint.PrettyPrinter(indent=1)
 
@@ -23,8 +90,8 @@ options.add_argument('--ignore-certificate-errors')
 options.add_argument('--ignore-ssl-errors')
 #options.add_argument('--headless')
 options.add_argument('--log-level=3')
-driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
-driver.maximize_window()
+options.add_argument("--incognito")
+driver = None
 
 IDS = {
     "address_input_1": "Fm11_Ctrl7_TB",
@@ -145,7 +212,7 @@ def select_matrix_app():
         WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.XPATH, XPATHS['end_tour_button']))).click()
     except Exception as e:
-        print("Quit tour error \n")
+        print("Quit tour \n")
     # Select matrix app
     WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['matrix_app']))).click()
 
@@ -157,7 +224,7 @@ def select_matrix_app():
     try:
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['read_later']))).click()
     except Exception as e:
-        print("Modal Error \n")
+        print("Modal \n")
         pass
 
 
@@ -457,7 +524,7 @@ def results_res_rental(address, display_mode="for_sale"):
         else:
             order_by_current_price()
     except Exception as e:
-        print("Order error \n")
+        print("Order \n")
     sleep(1)
     escape()
 
@@ -505,6 +572,7 @@ def select_folio_number(index=1):
 
     folio_number_link.click()
 
+
 def screenshots_of_county_info(address):
     subfolder = address.lower().replace(' ', '-').replace(',', '')
 
@@ -546,7 +614,11 @@ def screenshots_of_county_info(address):
 
 
 def mls_extraction(address, baths, rooms, sqft_to):
-    login()
+
+    try:
+        login()
+    except:
+        print("No Login")
     sleep(1)
 
     select_matrix_app()
@@ -736,17 +808,48 @@ def load(address, google_links, slides_data):
     prs.save(f'{address_format}.pptx')
 
 
-if __name__ == "__main__":
+def extract_transform_load(address, baths, rooms, sqft_to):
 
-    address = "416 SW 24th"
+    # Extract
+    google_links, mls_data, county_data = extract(address=address, baths=baths, rooms=rooms, sqft_to=sqft_to)
+    # Transform
+    slides_data = transform(address=address, mls_data=mls_data, county_data=county_data)
+    # Load
+    load(address=address, google_links=google_links, slides_data=slides_data)
+
+
+if __name__ == "__main__":
+    clear()
 
     # Create if not exists this folders
     verify_folder_exists('results')
     verify_folder_exists('criteria')
     verify_folder_exists('county')
-    # Extract
-    google_links, mls_data, county_data = extract(address, 2, 2, 500)
-    # Transform
-    slides_data = transform(address=address, mls_data=mls_data, county_data=county_data)
-    # Load
-    load(address=address, google_links=google_links, slides_data=slides_data)
+
+    while True:
+        clear()
+
+        main_menu_action = prompt(main_menu, style=style)
+
+        # Cerrar programa
+        if main_menu_action['action'] == 'Cerrar':
+            break
+        elif main_menu_action['action'] == main_menu_actions[0]:
+
+            address_info = prompt(address_info_input)
+            address = address_info["address"]
+            baths = address_info["baths"]
+            rooms = address_info["rooms"]
+            sqft_to = address_info["sqft_to"]
+
+            baths = int(baths) if baths else baths
+            rooms = int(rooms) if rooms else rooms
+            sqft_to = int(sqft_to) if sqft_to else sqft_to
+
+            driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+            driver.maximize_window()
+
+            extract_transform_load(address=address, baths=baths, rooms=rooms, sqft_to=sqft_to)
+
+        elif main_menu_action['action'] == main_menu_actions[1]:
+            print(colored.yellow("Indicar el archivo excel"))
