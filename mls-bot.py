@@ -1,4 +1,20 @@
 from __future__ import print_function, unicode_literals
+import subprocess
+import sys
+
+def install(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+# Install requirements
+install('selenium')
+install('clint')
+install('openpyxl')
+install('pyfiglet==0.7')
+install('PyInquirer')
+install('python-pptx')
+install('webdriver-manager')
+install('Pillow')
+
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -19,6 +35,7 @@ from clint.textui import colored, puts
 from os import system, name
 import glob
 import traceback
+
 
 # Limpiar la pantalla
 def clear():
@@ -238,7 +255,7 @@ def select_matrix_app():
         WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.XPATH, XPATHS['end_tour_button']))).click()
     except Exception as e:
-        print("WARNING: END TOUR Button no necessary.")
+        print("INFO: END TOUR Button no necessary.")
     # Select matrix app
     WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['matrix_app']))).click()
 
@@ -250,7 +267,7 @@ def select_matrix_app():
     try:
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['read_later']))).click()
     except Exception as e:
-        print("WARNING: Modal Message Not Found")
+        print("INFO: Modal Message Not Found")
         pass
 
 
@@ -388,7 +405,7 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
     address_input.send_keys(address)
 
      # Select option
-    dialog_address_search = WebDriverWait(driver, 15).until(
+    dialog_address_search = WebDriverWait(driver, 20).until(
         EC.element_to_be_clickable(
             (By.XPATH, XPATHS['dialog_address_search'])
         )
@@ -632,7 +649,7 @@ def screenshots_of_county_info(address):
     sleep(1)
     property_info_id = "property_info"
     property_info = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, property_info_id)))
-    sleep(1)
+    sleep(2)
 
     location = property_info.location_once_scrolled_into_view
     size = property_info.size
@@ -642,7 +659,7 @@ def screenshots_of_county_info(address):
     location['x'] = location['x'] * 0.8
     #location['y'] = location['y'] * 10
 
-    sleep(1)
+    sleep(2)
     property_info_path = screenshot_and_crop('county/' + subfolder, location, size, "property_info")
     sleep(1)
     driver.execute_script("document.body.style.zoom='100%'")
@@ -757,6 +774,9 @@ def extract(address, baths, rooms, sqft_to):
     try:
         county_info_paths = extract_county_info(address)
     except:
+        print("ERROR: Can't extract county info. "
+              "Maybe the address wasn't in the correct format for search "
+              "and miamidade.gov website indicated an error.")
         county_info_paths = {
             "property_info": '',
             "legal_info": '',
@@ -764,7 +784,11 @@ def extract(address, baths, rooms, sqft_to):
             "sales_info": ''
         }
     # Google the address, obtain the top 10 links
-    top_google_links = top_ten_links_on_google(address)
+    try:
+        top_google_links = top_ten_links_on_google(address)
+    except:
+        print("ERROR: Can't find the top google links")
+        top_google_links = []
     #printer.pprint(top_google_links)
 
     return top_google_links, criterias_results_paths, county_info_paths
@@ -906,7 +930,8 @@ def load(address, google_links, slides_data):
         i += 1
 
     # Save
-    prs.save(f'{address_format}.pptx')
+    prs.save(f'presentations/{address_format}.pptx')
+    print(f"INFO: The presentation of {address} was saved on presentations folder as {address_format}.pptx")
 
 
 def extract_transform_load(address, baths, rooms, sqft_to):
@@ -926,6 +951,7 @@ if __name__ == "__main__":
     verify_folder_exists('results')
     verify_folder_exists('criteria')
     verify_folder_exists('county')
+    verify_folder_exists('presentations')
 
     clear()
     while True:
