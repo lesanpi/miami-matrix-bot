@@ -3,6 +3,7 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 # from selenium.webdriver.common.action_chains import ActionChains
+from openpyxl import load_workbook
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 from webdriver_manager.chrome import ChromeDriverManager
@@ -17,6 +18,7 @@ from PyInquirer import prompt, print_json, style_from_dict, Token, Separator
 from clint.textui import colored, puts
 from os import system, name
 import glob
+import traceback
 
 # Limpiar la pantalla
 def clear():
@@ -78,6 +80,15 @@ address_info_input = [
         "name": "sqft_to"
     },
 ]
+# Excel
+excel_info_input = [
+    {
+        "type": "list",
+        "message": "Select a Excel File",
+        "name": "filename",
+        "choices": excel_files
+    }
+]
 
 printer = pprint.PrettyPrinter(indent=1)
 
@@ -85,12 +96,21 @@ URL = "https://sef.clareityiam.net/idp/login"
 COUNTY_URL = "https://www.miamidade.gov/Apps/PA/propertysearch/#/"
 GOOGLE_URL = "https://www.google.com"
 
+# Excel Cols
+SQFT_COL = 'K'
+BEDS_COL = 'L'
+BATHS_COL = 'M'
+STREET_COL = 'B'
+CITY_COL = 'C'
+ZIP_COL = 'D'
+
+# Driver
 options = webdriver.ChromeOptions()
 options.add_argument('--ignore-certificate-errors')
 options.add_argument('--ignore-ssl-errors')
 #options.add_argument('--headless')
 options.add_argument('--log-level=3')
-options.add_argument("--incognito")
+#options.add_argument("--incognito")
 driver = None
 
 IDS = {
@@ -166,16 +186,18 @@ def criteria_screenshot(address, folder):
     filter_container = WebDriverWait(driver, 15) \
         .until(EC.element_to_be_clickable((By.XPATH, XPATHS['filter_container'])))
 
-    filter_path = screenshot_of_element(filter_container, 'criteria/' + folder, address, width=1000)
+    filter_path = screenshot_of_element(filter_container, 'criteria/' + folder, address)
     driver.execute_script("window.scrollTo(0, 0)")
     return filter_path
 
 
-def screenshot_of_element(element, folder, filename, width = None):
+def screenshot_of_element(element, folder, filename, width=None, height=None):
     location = element.location_once_scrolled_into_view
     size = element.size
     if width:
         size['width'] = width
+    if height:
+        size['height'] = height
     file_path = screenshot_and_crop(folder, location, size, filename)
     return file_path
 
@@ -189,16 +211,20 @@ def verify_folder_exists(folder):
 def login():
     # Login
     driver.get(URL)
-    username_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['username_input'])))
+    sleep(3)
 
+    for i in range(2):
+        # Password
+        password_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['password_input'])))
+        password_input.click()
+        password_input.send_keys('1234armando')
+        sleep(1)
+
+    sleep(1)
     # Username
+    username_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['username_input'])))
     username_input.click()
     username_input.send_keys('3457717')
-
-    # Password
-    password_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['password_input'])))
-    password_input.click()
-    password_input.send_keys('1234armando')
 
     # Login
     login_button = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['login_button'])))
@@ -212,7 +238,7 @@ def select_matrix_app():
         WebDriverWait(driver, 15).until(
             EC.element_to_be_clickable((By.XPATH, XPATHS['end_tour_button']))).click()
     except Exception as e:
-        print("Quit tour \n")
+        print("WARNING: END TOUR Button no necessary.")
     # Select matrix app
     WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['matrix_app']))).click()
 
@@ -224,7 +250,7 @@ def select_matrix_app():
     try:
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['read_later']))).click()
     except Exception as e:
-        print("Modal \n")
+        print("WARNING: Modal Message Not Found")
         pass
 
 
@@ -284,7 +310,7 @@ def res_rental_search(address, baths, rooms, sqft_to):
     escape()
     # Filter
     criteria_path = single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=3, folder="res_rental")
-    results_path_1 = results_res_rental(address)
+    results_path_1 = results_res_rental(address, display_mode="for_sale")
     results_path_2 = results_res_rental(address, display_mode="marketing")
 
     return {
@@ -361,7 +387,7 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
     address_input.click()
     address_input.send_keys(address)
 
-    # Select option
+     # Select option
     dialog_address_search = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable(
             (By.XPATH, XPATHS['dialog_address_search'])
@@ -433,18 +459,18 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
 def order_by_sp():
     sp_tab = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['sp_tab'])))
     sp_tab.click()
-
+    sleep(0.5)
 
 def order_by_current_price():
     current_price_tab = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable((By.XPATH, XPATHS['current_price_tab'])))
     current_price_tab.click()
-
+    sleep(0.5)
 
 def order_by_distance():
     distance_tab = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['distance_tab'])))
     distance_tab.click()
-
+    sleep(0.5)
 
 # Table actions
 def set_display(display_mode='display_closed_comp'):
@@ -456,7 +482,7 @@ def set_display(display_mode='display_closed_comp'):
         .until(EC.element_to_be_clickable((By.XPATH, XPATHS[display_mode])))
     display_option.click()
     # Click again to close dropdown
-    sleep(1)
+    sleep(2)
     # display.click()
 
 
@@ -465,11 +491,13 @@ def results_family_search(address, index=None, display_mode='display_closed_comp
     escape()
 
     set_display(display_mode)
-    sleep(1)
+    sleep(3)
     escape()
-    order_by_sp()
-    order_by_sp()
-
+    try:
+        order_by_sp()
+        order_by_sp()
+    except:
+        print("WARNING: Can't Order by SP. Maybe because there is not data")
     sleep(1)
     escape()
 
@@ -477,9 +505,9 @@ def results_family_search(address, index=None, display_mode='display_closed_comp
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
 
     if not index:
-        results_path = screenshot_of_element(results_table, 'results/single_family', address)
+        results_path = screenshot_of_element(results_table, 'results/single_family', address, height=1000)
     else:
-        results_path = screenshot_of_element(results_table, f'results/single_family_{index}', address)
+        results_path = screenshot_of_element(results_table, f'results/single_family_{index}', address, height=1000)
 
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
@@ -492,8 +520,11 @@ def results_res_income(address, index=None, display_mode='display_closed_comp'):
     sleep(1)
 
     escape()
-    order_by_sp()
-    order_by_sp()
+    try:
+        order_by_sp()
+        order_by_sp()
+    except:
+        print("WARNING: Can't Order by SP. Maybe because there is not data")
     sleep(1)
     escape()
 
@@ -501,9 +532,9 @@ def results_res_income(address, index=None, display_mode='display_closed_comp'):
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
 
     if not index:
-        results_path = screenshot_of_element(results_table, 'results/res_income', address)
+        results_path = screenshot_of_element(results_table, 'results/res_income', address, height=1000)
     else:
-        results_path = screenshot_of_element(results_table, f'results/res_income_{index}', address)
+        results_path = screenshot_of_element(results_table, f'results/res_income_{index}', address, height=1000)
 
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
@@ -520,17 +551,26 @@ def results_res_rental(address, display_mode="for_sale"):
     escape()
     try:
         if display_mode == "for_sale":
-            order_by_distance()
+            try:
+                order_by_distance()
+            except:
+                print("WARNING: Can't Order by Distance. Maybe because there is not data")
         else:
-            order_by_current_price()
+            try:
+                order_by_current_price()
+                order_by_current_price()
+            except:
+                print("WARNING: Can't Order by Current Price. Maybe because there is not data")
     except Exception as e:
-        print("Order \n")
-    sleep(1)
+        print("WARNING: Cant order the data. \n")
+    sleep(2)
     escape()
 
+    sleep(2)
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
-    results_path = screenshot_of_element(results_table, 'results/res_rental_' + display_mode, address)
+    results_path = screenshot_of_element(results_table, 'results/res_rental_' + display_mode, address, height=1000, width=1500)
+    sleep(1)
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
 
@@ -548,7 +588,10 @@ def top_ten_links_on_google(address):
 
 def extract_county_info(address):
     search_address_on_county(address)
-    select_folio_number()
+    try:
+        select_folio_number()
+    except:
+        print("INFO: Just one folio")
     return screenshots_of_county_info(address)
 
 
@@ -574,36 +617,87 @@ def select_folio_number(index=1):
 
 
 def screenshots_of_county_info(address):
+
+    #print(driver.get_window_size())
+
+    container = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, "//div[@class='container ng-scope']")))
+    x_offset = (driver.get_window_size()['width'] - 1200)
+    #print(x_offset)
+    container_loc = container.location_once_scrolled_into_view
     subfolder = address.lower().replace(' ', '-').replace(',', '')
 
+    sleep(1)
+    # Property Info
     driver.execute_script("document.body.style.zoom='80%'")
     sleep(1)
     property_info_id = "property_info"
     property_info = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, property_info_id)))
+    sleep(1)
+
     location = property_info.location_once_scrolled_into_view
     size = property_info.size
     size['height'] = size['height'] * 0.8
     size['width'] = size['width'] * 0.8
+    #location['x'] = x_offset + 20
     location['x'] = location['x'] * 0.8
-    location['y'] = location['y'] * 10
+    #location['y'] = location['y'] * 10
 
+    sleep(1)
     property_info_path = screenshot_and_crop('county/' + subfolder, location, size, "property_info")
-
+    sleep(1)
     driver.execute_script("document.body.style.zoom='100%'")
+    driver.execute_script("window.scrollTo(0, 1000)")
+    sleep(1)
 
-    full_legal_description_xpath = "//div[@class='col-md-6' and position() = 2]/div[2]"
+    # Full Legal Desc
+    full_legal_description_xpath = '//*[@id="contentScrollPoint"]/div[4]/div[4]/div[2]/div[2]/div/table'
+    #"//table[@class='table table-condensed table-striped' and position()=3]"
+    #"//div[@class='table-responsive ng-scope' and position()=4]"
+    #"//div[@class='col-md-6' and position() = 2]/div[2]"
+
     full_legal_description = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable((By.XPATH, full_legal_description_xpath))
     )
-    legal_info_path = screenshot_of_element(full_legal_description, 'county/' + subfolder, "full_legal_info")
 
+    loc = full_legal_description.location_once_scrolled_into_view
+    size = full_legal_description.size
+    #loc['x'] = x_offset + 620
+    #size['height'] = size['height'] * 1.20
+
+    sleep(1)
+    legal_info_path = screenshot_and_crop("county/" + subfolder, location=loc, size=size, filename="full_legal_info")
+    #screenshot_of_element(full_legal_description, 'county/' + subfolder, "full_legal_info")
+
+    # Taxable Info
     taxable_xpath = "//div[@class='col-md-6' and position() = 1]/div[2]"
+    #"//div[@class='table-responsive ng-scope' and position()=2]"
+    #"//div[@class='col-md-6' and position() = 1]/div[2]"
     taxable = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, taxable_xpath)))
-    taxable_info_path = screenshot_of_element(taxable, 'county/' + subfolder, "taxable")
 
+    loc = taxable.location_once_scrolled_into_view
+    size = taxable.size
+    #loc['x'] = (x_offset/2) + 50
+    #size['width'] = size['width'] * 1.25
+
+    sleep(1)
+    taxable_info_path = screenshot_and_crop("county/" + subfolder, location=loc,size=size, filename="taxable")
+    #screenshot_of_element(taxable, 'county/' + subfolder, "taxable")
+
+    # Sales Info
     sales_info_xpath = "//div[@class='row tabular_data' and not(@ng-show)]/div[@class='col-md-12']"
+    #"//div[@class='table-responsive ng-scope' and position()=5]"
+    #"//table[@class='table table-condensed table-striped' and position()=4]"
+    # "//div[@class='row tabular_data' and not(@ng-show)]/div[@class='col-md-12']"
     sales_info = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, sales_info_xpath)))
-    sales_info_path = screenshot_of_element(sales_info, 'county/' + subfolder, "sales_info")
+
+    loc = sales_info.location_once_scrolled_into_view
+    size = sales_info.size
+    #loc['x'] = (x_offset/2) + 50
+    #size['width'] = size['width'] * 1.2
+    #size['height'] = size['height'] * 1.2
+
+    sales_info_path = screenshot_and_crop("county/" + subfolder, location=loc, size=size, filename="sales_info")
+    #screenshot_of_element(sales_info, 'county/' + subfolder, "sales_info")
 
     return {
         "property_info": property_info_path,
@@ -618,29 +712,29 @@ def mls_extraction(address, baths, rooms, sqft_to):
     try:
         login()
     except:
-        print("No Login")
+        print("INFO: Login was not necessary")
     sleep(1)
 
     select_matrix_app()
 
     single_family_1 = single_family_search(address, baths, rooms, sqft_to)
-    printer.pprint(single_family_1)
+    #printer.pprint(single_family_1)
     sleep(1)
 
     res_income_1 = res_income_search(address, baths, rooms, sqft_to)
-    printer.pprint(res_income_1)
+    #printer.pprint(res_income_1)
     sleep(1)
 
     res_rental = res_rental_search(address, baths, rooms, sqft_to)
-    printer.pprint(res_rental)
+    #printer.pprint(res_rental)
     sleep(1)
 
     single_family_2 = single_family_search_2(address, baths, rooms, sqft_to)
-    printer.pprint(single_family_2)
+    #printer.pprint(single_family_2)
     sleep(1)
 
     res_income_2 = res_income_search_2(address, baths, rooms, sqft_to)
-    printer.pprint(res_income_2)
+    #printer.pprint(res_income_2)
     sleep(1)
 
     data = {
@@ -650,21 +744,28 @@ def mls_extraction(address, baths, rooms, sqft_to):
         "single_family_2": single_family_2,
         "res_income_2": res_income_2
     }
-    print("Data:")
-    printer.pprint(data)
+    #print("Data:")
+    #printer.pprint(data)
     return data
 
 def extract(address, baths, rooms, sqft_to):
-    # Google the address, obtain the top 10 links
-    top_google_links = top_ten_links_on_google(address)
-    printer.pprint(top_google_links)
-
     # MLS Extraction
     criterias_results_paths = mls_extraction(address, baths, rooms, sqft_to)
-    printer.pprint(criterias_results_paths)
+    #printer.pprint(criterias_results_paths)
 
     # Extract the county info: property info, sales info, taxable info, legal info with screenshots
-    county_info_paths = extract_county_info(address)
+    try:
+        county_info_paths = extract_county_info(address)
+    except:
+        county_info_paths = {
+            "property_info": '',
+            "legal_info": '',
+            "taxable_info": '',
+            "sales_info": ''
+        }
+    # Google the address, obtain the top 10 links
+    top_google_links = top_ten_links_on_google(address)
+    #printer.pprint(top_google_links)
 
     return top_google_links, criterias_results_paths, county_info_paths
 
@@ -739,7 +840,7 @@ def transform(address, mls_data, county_data):
                 if slide_index == 9:
                     break
 
-    printer.pprint(slides_data)
+    #printer.pprint(slides_data)
 
     return slides_data
 
@@ -826,8 +927,8 @@ if __name__ == "__main__":
     verify_folder_exists('criteria')
     verify_folder_exists('county')
 
+    clear()
     while True:
-        clear()
 
         main_menu_action = prompt(main_menu, style=style)
 
@@ -852,4 +953,32 @@ if __name__ == "__main__":
             extract_transform_load(address=address, baths=baths, rooms=rooms, sqft_to=sqft_to)
 
         elif main_menu_action['action'] == main_menu_actions[1]:
-            print(colored.yellow("Indicar el archivo excel"))
+            excel_info = prompt(excel_info_input)
+            filename = excel_info['filename']
+            wb = load_workbook(filename)
+            sht = wb.active
+            last_row = len(sht['B'])
+
+            driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+            driver.maximize_window()
+
+            for i in range(3, last_row):
+                address = sht[STREET_COL + str(i)].value
+                sqft_to = sht[SQFT_COL + str(i)].value
+                baths = int(round(sht[BATHS_COL + str(i)].value))
+                rooms = int(round(sht[BEDS_COL + str(i)].value))
+
+                if address == None:
+                    print()
+                    print("*"*20)
+                    print("\nMESSAGE: No Address at row", i, "\n")
+                    print("*" * 20)
+                    print()
+                    break
+                print(f"{i}.", "Address:", address, "SQFT:", sqft_to, "BATHS", baths, "ROOMS:",rooms)
+                try:
+                    extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms)
+                except:
+                    print("Error in Extracting Data")
+                    traceback.print_exc()
+                    break
