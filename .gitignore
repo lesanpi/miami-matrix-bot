@@ -6,4 +6,7 @@ county/
 criteria/
 *.pptx
 *.xlsx
+*.csv
+notas-proyecto.md
+test.py
 presentations

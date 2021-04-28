@@ -14,6 +14,8 @@ install('PyInquirer')
 install('python-pptx')
 install('webdriver-manager')
 install('Pillow')
+install('pandas')
+install('numpy')
 
 from selenium import webdriver
 from selenium.webdriver.common.by import By
@@ -35,7 +37,8 @@ from clint.textui import colored, puts
 from os import system, name
 import glob
 import traceback
-
+import pandas as pd
+import numpy as np
 
 # Limpiar la pantalla
 def clear():
@@ -62,9 +65,10 @@ title = Figlet(font='slant')
 # Actions
 main_menu_actions = [
     "Use a especific address",
-    "Use a excel file",
+    "Use a excel or a csv file",
 ]
 excel_files = glob.glob('*.xlsx')
+csv_files = glob.glob('*.csv')
 # Menu
 main_menu = [
     {
@@ -103,7 +107,7 @@ excel_info_input = [
         "type": "list",
         "message": "Select a Excel File",
         "name": "filename",
-        "choices": excel_files
+        "choices": excel_files + csv_files
     }
 ]
 
@@ -114,12 +118,17 @@ COUNTY_URL = "https://www.miamidade.gov/Apps/PA/propertysearch/#/"
 GOOGLE_URL = "https://www.google.com"
 
 # Excel Cols
-SQFT_COL = 'K'
-BEDS_COL = 'L'
-BATHS_COL = 'M'
-STREET_COL = 'B'
-CITY_COL = 'C'
-ZIP_COL = 'D'
+SQFT_COL_XLSX = 'K'
+BEDS_COL_XLSX = 'L'
+BATHS_COL_XLSX = 'M'
+STREET_COL_XLSX = 'B'
+CITY_COL_XLSX = 'C'
+ZIP_COL_XLSX = 'D'
+# Csv Ix
+ADDRESS_COL_CSV = 1
+BEDS_COL_CSV = 11
+BATHS_COL_CSV = 12
+SQFT_COL_CSV = 10
 
 # Driver
 options = webdriver.ChromeOptions()
@@ -172,6 +181,7 @@ XPATHS = {
     "sp_tab": r"//th[contains(@data-mlheader, '1\bSP$\a2\b')]",
     "current_price_tab": r"//th[@data-mlheader='1\bCurrent Price\a2\bCurrent Price']",
     "distance_tab": r"//th[@data-mlheader='1\bDistance\a2\bDistance']",
+    "closed_sale_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21507"]',
     "active_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="101"]',
     "rented_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21510"]',
     "expired_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="106"]',
@@ -344,7 +354,7 @@ def single_family_search_2(address, baths, rooms, sqft_to):
     # Filter
     criteria_path = single_family_filter(address, baths, rooms, sqft_to, search_type=4, folder="single_family_2")
     # Results
-    results_path = results_family_search(address, index=2, display_mode='display_ac/p/a_review')
+    results_path = results_family_search(address, index=2, display_mode='display_for_sale')
 
     return {
         "criteria": criteria_path,
@@ -358,7 +368,7 @@ def res_income_search_2(address, baths, rooms, sqft_to):
     escape()
     # Filter
     criteria_path = single_family_filter(address, baths, rooms, sqft_to, miles=1, search_type=5, folder="res_income_2")
-    results_path = results_res_income(address, index=2, display_mode='display_ac/p/a_review')
+    results_path = results_res_income(address, index=2, display_mode='display_for_sale')
 
     return {
         "criteria": criteria_path,
@@ -454,6 +464,8 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
         rented_input.clear()
         rented_input.send_keys(f"0-365")
     elif search_type == 4 or search_type == 5:
+        # Uncheck closed sale
+        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['closed_sale_checkbox']))).click()
         # Active
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_checkbox']))).click()
         # Pending
@@ -478,11 +490,13 @@ def order_by_sp():
     sp_tab.click()
     sleep(0.5)
 
+
 def order_by_current_price():
     current_price_tab = WebDriverWait(driver, 15).until(
         EC.element_to_be_clickable((By.XPATH, XPATHS['current_price_tab'])))
     current_price_tab.click()
     sleep(0.5)
+
 
 def order_by_distance():
     distance_tab = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['distance_tab'])))
@@ -511,8 +525,10 @@ def results_family_search(address, index=None, display_mode='display_closed_comp
     sleep(3)
     escape()
     try:
-        order_by_sp()
-        order_by_sp()
+        if not index:
+            order_by_sp()
+            sleep(0.5)
+            order_by_sp()
     except:
         print("WARNING: Can't Order by SP. Maybe because there is not data")
     sleep(1)
@@ -524,7 +540,7 @@ def results_family_search(address, index=None, display_mode='display_closed_comp
     if not index:
         results_path = screenshot_of_element(results_table, 'results/single_family', address, height=1000)
     else:
-        results_path = screenshot_of_element(results_table, f'results/single_family_{index}', address, height=1000)
+        results_path = screenshot_of_element(results_table, f'results/single_family_{index}', address, height=1000, width=1500)
 
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
@@ -537,9 +553,12 @@ def results_res_income(address, index=None, display_mode='display_closed_comp'):
     sleep(1)
 
     escape()
+    sleep(0.5)
     try:
-        order_by_sp()
-        order_by_sp()
+        if not index:
+            order_by_sp()
+            sleep(0.5)
+            order_by_sp()
     except:
         print("WARNING: Can't Order by SP. Maybe because there is not data")
     sleep(1)
@@ -551,7 +570,7 @@ def results_res_income(address, index=None, display_mode='display_closed_comp'):
     if not index:
         results_path = screenshot_of_element(results_table, 'results/res_income', address, height=1000)
     else:
-        results_path = screenshot_of_element(results_table, f'results/res_income_{index}', address, height=1000)
+        results_path = screenshot_of_element(results_table, f'results/res_income_{index}', address, height=1000, width=1750)
 
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
@@ -575,6 +594,7 @@ def results_res_rental(address, display_mode="for_sale"):
         else:
             try:
                 order_by_current_price()
+                sleep(0.5)
                 order_by_current_price()
             except:
                 print("WARNING: Can't Order by Current Price. Maybe because there is not data")
@@ -586,7 +606,7 @@ def results_res_rental(address, display_mode="for_sale"):
     sleep(2)
     # Screenshot
     results_table = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['results_table'])))
-    results_path = screenshot_of_element(results_table, 'results/res_rental_' + display_mode, address, height=1000, width=1500)
+    results_path = screenshot_of_element(results_table, 'results/res_rental_' + display_mode, address, height=1000, width=1750)
     sleep(1)
     driver.execute_script("window.scrollTo(0, 0)")
     return results_path
@@ -626,7 +646,7 @@ def search_address_on_county(address):
 
 
 def select_folio_number(index=1):
-    WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['folio_number_link'])))
+    WebDriverWait(driver, 25).until(EC.element_to_be_clickable((By.XPATH, XPATHS['folio_number_link'])))
     folios_number = driver.find_elements_by_xpath(XPATHS['folio_number_link'])
     folio_number_link = folios_number[0]
 
@@ -765,6 +785,7 @@ def mls_extraction(address, baths, rooms, sqft_to):
     #printer.pprint(data)
     return data
 
+
 def extract(address, baths, rooms, sqft_to):
     # MLS Extraction
     criterias_results_paths = mls_extraction(address, baths, rooms, sqft_to)
@@ -792,6 +813,7 @@ def extract(address, baths, rooms, sqft_to):
     #printer.pprint(top_google_links)
 
     return top_google_links, criterias_results_paths, county_info_paths
+
 
 def transform(address, mls_data, county_data):
     titles = [
@@ -868,6 +890,7 @@ def transform(address, mls_data, county_data):
 
     return slides_data
 
+
 def load(address, google_links, slides_data):
     address_format = address.lower().replace(' ', '-').replace(',', '')
 
@@ -901,10 +924,13 @@ def load(address, google_links, slides_data):
             # Google Links
             for link in google_links:
                 p = tf.add_paragraph()
-                p.text = link
+                r = p.add_run()
+                r.text = link
                 p.size = Pt(6)
                 p.level = 1
                 p.font.size = Pt(15)
+                hlink = r.hyperlink
+                hlink.address = link
 
         # Insert image if have a image path
         if slide_data["image_path"]:
@@ -981,30 +1007,79 @@ if __name__ == "__main__":
         elif main_menu_action['action'] == main_menu_actions[1]:
             excel_info = prompt(excel_info_input)
             filename = excel_info['filename']
-            wb = load_workbook(filename)
-            sht = wb.active
-            last_row = len(sht['B'])
 
-            driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
-            driver.maximize_window()
+            if filename.split('.')[-1] == 'csv':
 
-            for i in range(3, last_row):
-                address = sht[STREET_COL + str(i)].value
-                sqft_to = sht[SQFT_COL + str(i)].value
-                baths = int(round(sht[BATHS_COL + str(i)].value))
-                rooms = int(round(sht[BEDS_COL + str(i)].value))
+                data = pd.read_csv(filename)
+                data = np.array(data)
+                data = data[1:]
+                print(data)
+                num_rows = len(data)
 
-                if address == None:
-                    print()
-                    print("*"*20)
-                    print("\nMESSAGE: No Address at row", i, "\n")
-                    print("*" * 20)
-                    print()
-                    break
-                print(f"{i}.", "Address:", address, "SQFT:", sqft_to, "BATHS", baths, "ROOMS:",rooms)
-                try:
-                    extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms)
-                except:
-                    print("Error in Extracting Data")
-                    traceback.print_exc()
-                    break
+                driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+                driver.maximize_window()
+
+                for i, row in enumerate(data):
+
+                    address = row[ADDRESS_COL_CSV]
+                    rooms = int(round(float(row[BEDS_COL_CSV])))
+                    baths = int(round(float(row[BATHS_COL_CSV])))
+                    sqft_to = row[SQFT_COL_CSV]
+
+                    if sqft_to == 'nan':
+                        sqft_to = ""
+                    else:
+                        sqft_to = int(sqft_to)
+
+                    print(f"{i}.", "Address:", address, "SQFT:", sqft_to, "BATHS:", baths, "ROOMS:", rooms)
+
+                    if not address:
+                        print()
+                        print("*"*20)
+                        print("\nMESSAGE: No Address at row", i, "\n")
+                        print("*" * 20)
+                        print()
+                        break
+
+                    try:
+                        extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms)
+                    except:
+                        print("Error Extracting Data")
+                        traceback.print_exc()
+                        break
+
+            elif filename.split('.')[-1] == 'xlsx':
+
+                wb = load_workbook(filename)
+                sht = wb.active
+                last_row = len(sht['B'])
+
+                driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
+                driver.maximize_window()
+
+                for i in range(3, last_row):
+                    address = sht[STREET_COL_XLSX + str(i)].value
+                    sqft_to = sht[SQFT_COL_XLSX + str(i)].value
+                    baths = int(round(sht[BATHS_COL_XLSX + str(i)].value))
+                    rooms = int(round(sht[BEDS_COL_XLSX + str(i)].value))
+
+                    if address == None:
+                        print()
+                        print("*"*20)
+                        print("\nMESSAGE: No Address at row", i, "\n")
+                        print("*" * 20)
+                        print()
+                        break
+
+                    try:
+                        sqft_to = int(sqft_to)
+                    except:
+                        print("")
+
+                    print(f"{i}.", "Address:", address, "SQFT:", sqft_to, "BATHS", baths, "ROOMS:",rooms)
+                    try:
+                        extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms)
+                    except:
+                        print("Error Extracting Data")
+                        traceback.print_exc()
+                        break
