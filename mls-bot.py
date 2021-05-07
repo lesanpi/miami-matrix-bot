@@ -1,4 +1,6 @@
 from __future__ import print_function, unicode_literals
+
+import datetime
 import subprocess
 import sys
 
@@ -39,6 +41,8 @@ import glob
 import traceback
 import pandas as pd
 import numpy as np
+import openpyxl
+import string
 
 # Limpiar la pantalla
 def clear():
@@ -130,6 +134,10 @@ BEDS_COL_CSV = 11
 BATHS_COL_CSV = 12
 SQFT_COL_CSV = 10
 
+# SpreadSheet Data
+active_row = 1
+alfabet = list(string.ascii_lowercase)
+
 # Driver
 options = webdriver.ChromeOptions()
 options.add_argument('--ignore-certificate-errors')
@@ -179,6 +187,7 @@ XPATHS = {
     "display_ac/p/a_review": f"//select[@id='{IDS['display']}']/option[@value='U84429']",
     "results_table": "//div[@class='css_container']",
     "sp_tab": r"//th[contains(@data-mlheader, '1\bSP$\a2\b')]",
+    "type_tab": r"//th[contains(@data-mlheader, '1\bType\a2\bType')]",
     "current_price_tab": r"//th[@data-mlheader='1\bCurrent Price\a2\bCurrent Price']",
     "distance_tab": r"//th[@data-mlheader='1\bDistance\a2\bDistance']",
     "closed_sale_checkbox": '//input[@type="checkbox" and @class="checkbox" and @value="21507"]',
@@ -288,6 +297,7 @@ def escape():
 # Searchs
 # Select type of search
 def select_search(search: int):
+    sleep(3)
     # Click on search
     search_option = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['search_option'])))
     search_option.click()
@@ -457,8 +467,8 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['active_checkbox']))).click()
         # Rented check
         WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['rented_checkbox']))).click()
-        # Expired check
-        WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['expired_checkbox']))).click()
+        # Expired no check
+        # WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['expired_checkbox']))).click()
 
         rented_input = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.ID, IDS['rented_input_3'])))
         rented_input.clear()
@@ -487,6 +497,12 @@ def single_family_filter(address, baths, rooms, sqft_to, miles=0.5, search_type=
 # Order
 def order_by_sp():
     sp_tab = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['sp_tab'])))
+    sp_tab.click()
+    sleep(0.5)
+
+
+def order_by_type():
+    sp_tab = WebDriverWait(driver, 15).until(EC.element_to_be_clickable((By.XPATH, XPATHS['type_tab'])))
     sp_tab.click()
     sleep(0.5)
 
@@ -556,9 +572,11 @@ def results_res_income(address, index=None, display_mode='display_closed_comp'):
     sleep(0.5)
     try:
         if not index:
-            order_by_sp()
+            # order_by_sp()
+            order_by_type()
             sleep(0.5)
-            order_by_sp()
+            order_by_type()
+            # order_by_sp()
     except:
         print("WARNING: Can't Order by SP. Maybe because there is not data")
     sleep(1)
@@ -836,7 +854,6 @@ def transform(address, mls_data, county_data):
         "COMPS FOR SALE MULTI FAMILY (ACTIVE, PENDING Y ACTIVE WITH CONTRACT)",
     ]
     slides_data = []
-    slide_index = 2
 
     slides_data.append({'image_path': None, 'slide_index': 0, 'title': str(address).upper()})
     slides_data.append({'image_path': None, 'slide_index': 1, 'title': 'PRIMEROS 10 ENLACES DE GOOGLE'}, )
@@ -923,6 +940,7 @@ def load(address, google_links, slides_data):
             tf.text = 'Top 10:'
             # Google Links
             for link in google_links:
+                # Creating hyperlinks
                 p = tf.add_paragraph()
                 r = p.add_run()
                 r.text = link
@@ -960,14 +978,79 @@ def load(address, google_links, slides_data):
     print(f"INFO: The presentation of {address} was saved on presentations folder as {address_format}.pptx")
 
 
-def extract_transform_load(address, baths, rooms, sqft_to):
+def add_image_to_excel(image_path, anchor, ws, col_width=10, col_height=10):
+    im = Image.open(image_path)
+    width, height = im.size
+
+    excel_image_width = 80 * (col_width - 1)
+    width_scale = excel_image_width / width
+
+    img = openpyxl.drawing.image.Image(image_path)
+    img.width = 80 * (col_width - 2)
+    img.height = height * width_scale
+    img.anchor = anchor
+    ws.add_image(img)
+
+
+def load_to_spreadsheet(address, top_google_links, slides_data, filename_spread):
+    global active_row
+    wb_imgs = load_workbook(filename_spread)
+    ws_imgs = wb_imgs.active
+
+    info = [address] + top_google_links
+    for i in range(len(info)):
+        anchor = f"{alfabet[i]}{active_row}"
+        if i > 0:
+            ws_imgs[anchor].hyperlink = info[i]
+            ws_imgs[anchor].value = info[i]
+
+        else:
+            ws_imgs[anchor] = info[i]
+
+    col_i = i + 1 # Where the images start
+    col_j = -1 # For two indexs columns. Example: AX, BC.
+    for i, slide in enumerate(slides_data):
+        if slide["image_path"]:
+
+            while col_i >= len(alfabet):
+                col_i = col_i - len(alfabet)
+                col_j += 1
+
+            if col_j == -1:
+                anchor = alfabet[col_i]
+            else:
+                anchor = alfabet[col_j] + alfabet[col_i]
+
+            anchor = f'{anchor}{active_row}'.upper()
+
+            #print(anchor)
+            image_path = slide["image_path"]
+            im = Image.open(image_path)
+            width, height = im.size
+
+            if width * 1.75 > height:
+                add_image_to_excel(image_path=image_path, anchor=anchor, ws=ws_imgs)
+                col_i += 10
+            else:
+                add_image_to_excel(image_path=image_path, anchor=anchor, ws=ws_imgs, col_width=4.5)
+                col_i += 3
+
+    active_row += 30
+    wb_imgs.save(filename=filename_spread)
+
+
+def extract_transform_load(address, baths, rooms, sqft_to, filename_spread):
 
     # Extract
     google_links, mls_data, county_data = extract(address=address, baths=baths, rooms=rooms, sqft_to=sqft_to)
     # Transform
     slides_data = transform(address=address, mls_data=mls_data, county_data=county_data)
-    # Load
+    # Load to Presentation
+    #printer.pprint(slides_data)
     load(address=address, google_links=google_links, slides_data=slides_data)
+    # Load to SpreadSheet
+    load_to_spreadsheet(slides_data=slides_data, filename_spread=filename_spread, address=address, top_google_links=google_links)
+
 
 
 if __name__ == "__main__":
@@ -978,11 +1061,18 @@ if __name__ == "__main__":
     verify_folder_exists('criteria')
     verify_folder_exists('county')
     verify_folder_exists('presentations')
+    verify_folder_exists('spreadsheets')
 
     clear()
     while True:
 
         main_menu_action = prompt(main_menu, style=style)
+
+        # Create the spreadsheet
+        today = datetime.datetime.today()
+        filename_spread = "spreadsheets/" + today.strftime("%b-%d-%Y-%H-%M-%S") + '.xlsx'
+        wb_imgs = openpyxl.Workbook()
+        wb_imgs.save(filename=filename_spread)
 
         # Cerrar programa
         if main_menu_action['action'] == 'Cerrar':
@@ -1002,7 +1092,7 @@ if __name__ == "__main__":
             driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
             driver.maximize_window()
 
-            extract_transform_load(address=address, baths=baths, rooms=rooms, sqft_to=sqft_to)
+            extract_transform_load(address=address, baths=baths, rooms=rooms, sqft_to=sqft_to, filename_spread=filename_spread)
 
         elif main_menu_action['action'] == main_menu_actions[1]:
             excel_info = prompt(excel_info_input)
@@ -1018,6 +1108,8 @@ if __name__ == "__main__":
 
                 driver = webdriver.Chrome(ChromeDriverManager().install(), options=options)
                 driver.maximize_window()
+
+                wb.save(filename=filename_spread)
 
                 for i, row in enumerate(data):
 
@@ -1042,7 +1134,7 @@ if __name__ == "__main__":
                         break
 
                     try:
-                        extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms)
+                        extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms, filename_spread=filename_spread)
                     except:
                         print("Error Extracting Data")
                         traceback.print_exc()
@@ -1078,7 +1170,7 @@ if __name__ == "__main__":
 
                     print(f"{i}.", "Address:", address, "SQFT:", sqft_to, "BATHS", baths, "ROOMS:",rooms)
                     try:
-                        extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms)
+                        extract_transform_load(address=address, sqft_to=sqft_to, baths=baths, rooms=rooms, filename_spread=filename_spread)
                     except:
                         print("Error Extracting Data")
                         traceback.print_exc()
